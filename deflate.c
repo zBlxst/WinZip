@@ -8,93 +8,17 @@
 #define HISTORY_SIZE (32*1024)
 
 void decompress_huffman_block(char* raw_content, char* output, int max_length) {
-    int num_lit_len_codes = 257 + get_bits(raw_content, 5); 
-    int num_dist_codes = 1 + get_bits(raw_content, 5);
-    int num_code_len_codes = 4 + get_bits(raw_content, 4);
+        
+    int* dist_code;
+    int* lit_len_code_len;
+
+    decode_huffman_codes(raw_content, &lit_len_code_len, &dist_code);
 
     char history[HISTORY_SIZE] = {0};
     int history_index = 0;
     int history_read_index = 0;
-
     int output_index = 0;
-
-    int max_size;
-    int* code = decode_huffman_codes(raw_content, num_code_len_codes, &max_size);
-
-    int* code_lens = malloc_or_error((num_lit_len_codes + num_dist_codes)*sizeof(int));
-
-    int i;
-    for (i = 0; i < (num_lit_len_codes + num_dist_codes);) {
-        int sym = decode_next_symbol(raw_content, code);
-        if (0 <= sym && sym < 16) {
-            code_lens[i++] = sym;
-            continue;
-        }
-        int run_len;
-        int run_val = 0;
-        switch (sym)
-        {
-            case 16:
-                if (i == 0) {
-                    printf("No code length to copy\n");
-                    exit(1);
-                }
-                run_len = 3 + get_bits(raw_content, 2);
-                run_val = code_lens[i-1];
-                break;
-            case 17:
-                run_len = 3 + get_bits(raw_content, 3);
-                break;
-            case 18:
-                run_len = 11 + get_bits(raw_content, 7);
-                break;
-            default:
-                printf("Symbol out of range\n");
-                exit(1);
-        }
-        for (int j = 0; j < run_len; j++) {
-            code_lens[i++] = run_val;
-        }
-    }
-    if (i != num_lit_len_codes + num_dist_codes) {
-        printf("Run exceeds number of code\n");
-        exit(1);
-    }
-
-    for (int i = 0; i < num_lit_len_codes + num_dist_codes; i++) {
-        // printf("%d -> %d\n", i, code_lens[i]);
-    }
-
-    if (code_lens[256] == 0) {
-        printf("End-of-block symbol has zero code length\n");
-        exit(1);
-    }
-
-    int* lit_len_code_len = code_bits_symbols_from_lengths(code_lens, num_lit_len_codes, &max_size);
-    int* dist_code_len_ = code_lens + num_lit_len_codes;
-    int* dist_code_len = malloc_or_error(32*sizeof(int));
-    for (int i = 0; i < num_dist_codes; i++) dist_code_len[i] = dist_code_len_[i];
-    int* dist_code;
-
-    if (num_dist_codes == 1 && dist_code_len[0] == 0) {
-        dist_code = NULL;
-    } else {
-        size_t one_count = 0;
-        size_t other_positive_count = 0;
-        for (int i = 0; i < num_dist_codes; i++) {
-            if (dist_code_len[i] == 1) one_count++;
-            if (dist_code_len[i] > 1) other_positive_count++;
-        }
-
-        if (one_count == 1 && other_positive_count) {
-            for (int i = num_dist_codes; i < 31; i++) {
-                dist_code_len[i] = 0;
-            }
-            dist_code_len[31] = 1;
-        }
-        dist_code = code_bits_symbols_from_lengths(dist_code_len, 32, &max_size);
-    }
-
+    
     while (1) {
         int symbol = decode_next_symbol(raw_content, lit_len_code_len);
         if (symbol == 256) {
@@ -117,7 +41,7 @@ void decompress_huffman_block(char* raw_content, char* output, int max_length) {
                 printf("Invalid distance\n");
                 exit(1);
             }
-
+            
             // printf("\n\tCopying %d bytes from history at dist %ld\n", run, dist);
             history_read_index = (HISTORY_SIZE - dist + output_index) % HISTORY_SIZE;
             // printf("\tIndex : %d, Read Index : %d (output_index %d)\n", history_index, history_read_index, output_index);
@@ -129,10 +53,101 @@ void decompress_huffman_block(char* raw_content, char* output, int max_length) {
                 history_read_index %= HISTORY_SIZE;
                 // printf("%02hhx ", to_add);
             }
-
+            
             // printf("\nNot found yet (%d)!\n", symbol);
         }
     }
+}
+
+void decode_huffman_codes(char* raw_content, int** lit_len_code_len, int** dist_code) {
+
+    int num_lit_len_codes = 257 + get_bits(raw_content, 5); 
+    int num_dist_codes = 1 + get_bits(raw_content, 5);
+    int num_code_len_codes = 4 + get_bits(raw_content, 4);
+    
+    int code_len_code_len[19] = {0};
+    code_len_code_len[16] = get_bits(raw_content, 3);
+    code_len_code_len[17] = get_bits(raw_content, 3);
+    code_len_code_len[18] = get_bits(raw_content, 3);
+    code_len_code_len[0] = get_bits(raw_content, 3);
+    for (int i = 0; i < num_code_len_codes - 4; i++) {
+        int j = (i % 2 == 0) ? (8 + i / 2) : (7 - i / 2);
+        code_len_code_len[j] = get_bits(raw_content, 3);
+    }
+    
+    
+    int* code = code_bits_symbols_from_lengths(code_len_code_len, 19);
+    int* code_lens = malloc_or_error((num_lit_len_codes + num_dist_codes)*sizeof(int));
+    
+    
+    int i;
+    for (i = 0; i < (num_lit_len_codes + num_dist_codes);) {
+        int sym = decode_next_symbol(raw_content, code);
+        if (0 <= sym && sym < 16) {
+            code_lens[i++] = sym;
+            continue;
+        }
+        int run_len;
+        int run_val = 0;
+        switch (sym)
+        {
+            case 16:
+            if (i == 0) {
+                printf("No code length to copy\n");
+                exit(1);
+            }
+            run_len = 3 + get_bits(raw_content, 2);
+            run_val = code_lens[i-1];
+            break;
+            case 17:
+            run_len = 3 + get_bits(raw_content, 3);
+            break;
+            case 18:
+            run_len = 11 + get_bits(raw_content, 7);
+            break;
+            default:
+            printf("Symbol out of range\n");
+            exit(1);
+        }
+        for (int j = 0; j < run_len; j++) {
+            code_lens[i++] = run_val;
+        }
+    }
+    if (i != num_lit_len_codes + num_dist_codes) {
+        printf("Run exceeds number of code\n");
+        exit(1);
+    }
+    
+    if (code_lens[256] == 0) {
+        printf("End-of-block symbol has zero code length\n");
+        exit(1);
+    }
+    
+    *lit_len_code_len = code_bits_symbols_from_lengths(code_lens, num_lit_len_codes);
+    int* dist_code_len_ = code_lens + num_lit_len_codes;
+    int* dist_code_len = malloc_or_error(32*sizeof(int));
+    for (int i = 0; i < num_dist_codes; i++) dist_code_len[i] = dist_code_len_[i];
+    
+    if (num_dist_codes == 1 && dist_code_len[0] == 0) {
+        *dist_code = NULL;
+    } else {
+        size_t one_count = 0;
+        size_t other_positive_count = 0;
+        for (int i = 0; i < num_dist_codes; i++) {
+            if (dist_code_len[i] == 1) one_count++;
+            if (dist_code_len[i] > 1) other_positive_count++;
+        }
+        
+        if (one_count == 1 && other_positive_count) {
+            for (int i = num_dist_codes; i < 31; i++) {
+                dist_code_len[i] = 0;
+            }
+            dist_code_len[31] = 1;
+        }
+        *dist_code = code_bits_symbols_from_lengths(dist_code_len, 32);
+    }
+
+    
 }
 
 int decode_dist(char* raw_content, int symbol) {
@@ -160,12 +175,11 @@ int decode_run_length(char* raw_content, int symbol) {
     if (symbol == 285) return 258;
 }
 
-int* code_bits_symbols_from_lengths(int* code_len_code_len, int max_len, int* max_size) {
+int* code_bits_symbols_from_lengths(int* code_len_code_len, int max_len) {
     int max_length = -1;
     for (int i = 0; i < max_len; i++) {
         max_length = max(max_length, code_len_code_len[i]);
     }
-    *max_size = max_length+1;
 
     int* code_bits_to_symbol = malloc_or_error((1<<(max_length+1))*sizeof(int));
     for (int i = 0; i < (1<<(max_length+1)); i++) {
@@ -191,22 +205,6 @@ int* code_bits_symbols_from_lengths(int* code_len_code_len, int max_len, int* ma
     return code_bits_to_symbol;
 }
 
-int* decode_huffman_codes(char* raw_content, int num_code_len_codes, int* max_size) {
-
-    int code_len_code_len[19] = {0};
-
-    code_len_code_len[16] = get_bits(raw_content, 3);
-    code_len_code_len[17] = get_bits(raw_content, 3);
-    code_len_code_len[18] = get_bits(raw_content, 3);
-    code_len_code_len[0] = get_bits(raw_content, 3);
-    for (int i = 0; i < num_code_len_codes - 4; i++) {
-		int j = (i % 2 == 0) ? (8 + i / 2) : (7 - i / 2);
-		code_len_code_len[j] = get_bits(raw_content, 3);
-	}
-
-    return code_bits_symbols_from_lengths(code_len_code_len, 19, max_size);
-    
-}
 
 int decode_next_symbol(char *raw_content, int* code_bits_to_symbol) {
     int acc = 1;
