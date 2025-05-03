@@ -9,5 +9,5 @@ void* malloc_or_error(size_t size);
 void print_byte_array(char* array, size_t size, char* line_prefix);
 
 char get_bit(char* raw_content, int reset);
-void reset_bit();
+void reset_get_bit();
 int16_t get_bits(char* raw_content, int count);

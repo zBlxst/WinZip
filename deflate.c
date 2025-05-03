@@ -7,17 +7,11 @@
 
 #define HISTORY_SIZE (32*1024)
 
-void decompress_huffman_block(char* raw_content, char* output, int max_length) {
-        
-    int* dist_code;
-    int* lit_len_code_len;
-
-    decode_huffman_codes(raw_content, &lit_len_code_len, &dist_code);
+void decompress_huffman_block(char* raw_content, char* output, int* output_index, int max_length, int* dist_code, int* lit_len_code_len) {
 
     char history[HISTORY_SIZE] = {0};
     int history_index = 0;
     int history_read_index = 0;
-    int output_index = 0;
     
     while (1) {
         int symbol = decode_next_symbol(raw_content, lit_len_code_len);
@@ -26,7 +20,7 @@ void decompress_huffman_block(char* raw_content, char* output, int max_length) {
         }
         if (symbol < 256) {
             // printf("%02hhx ", symbol);
-            output[output_index++] = symbol;
+            output[(*output_index)++] = symbol;
             history[history_index++] = symbol;
             history_index %= HISTORY_SIZE;
         } else {
@@ -43,11 +37,11 @@ void decompress_huffman_block(char* raw_content, char* output, int max_length) {
             }
             
             // printf("\n\tCopying %d bytes from history at dist %ld\n", run, dist);
-            history_read_index = (HISTORY_SIZE - dist + output_index) % HISTORY_SIZE;
+            history_read_index = (HISTORY_SIZE - dist + (*output_index)) % HISTORY_SIZE;
             // printf("\tIndex : %d, Read Index : %d (output_index %d)\n", history_index, history_read_index, output_index);
             for (int i = 0; i < run; i++) {
                 char to_add = history[history_read_index++];
-                output[output_index++] = to_add;
+                output[(*output_index)++] = to_add;
                 history[history_index++] = to_add;
                 history_index %= HISTORY_SIZE;
                 history_read_index %= HISTORY_SIZE;
@@ -217,9 +211,30 @@ int decode_next_symbol(char *raw_content, int* code_bits_to_symbol) {
     }
 }
 
+void gen_const_lit_len_code_len(int** lit_len_code_len) {
+    *lit_len_code_len = malloc_or_error(288*sizeof(int));
+    int i = 0;
+	for (; i < 144; i++) (*lit_len_code_len)[i] = 8;
+	for (; i < 256; i++) (*lit_len_code_len)[i] = 9;
+	for (; i < 280; i++) (*lit_len_code_len)[i] = 7;
+	for (; i < 288; i++) (*lit_len_code_len)[i] = 8;
+}
+
+void gen_const_dist_code(int** dist_code) {
+    *dist_code = malloc_or_error(32*sizeof(int));
+    for (int i = 0; i < 32; i++) {
+        (*dist_code)[i] = 5;
+    }
+}
+
+
+
 void deflate(char* raw_content, char* output, int max_length) {
     int last_block = 1;
     int compression_type;
+    int output_index = 0;
+    int* dist_code;
+    int* lit_len_code_len;
     do {
         last_block = get_bits(raw_content, 1);
         compression_type = get_bits(raw_content, 2);
@@ -229,9 +244,13 @@ void deflate(char* raw_content, char* output, int max_length) {
         case 0:
             break;
         case 1:
+            gen_const_lit_len_code_len(&lit_len_code_len);
+            gen_const_dist_code(&dist_code);
+            decompress_huffman_block(raw_content, output, &output_index, max_length, dist_code, lit_len_code_len);
             break;
         case 2:
-            decompress_huffman_block(raw_content, output, max_length);
+            decode_huffman_codes(raw_content, &lit_len_code_len, &dist_code);
+            decompress_huffman_block(raw_content, output, &output_index, max_length, dist_code, lit_len_code_len);
             break;
         default:
             printf("This compression type is an error\n");
