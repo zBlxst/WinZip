@@ -22,3 +22,26 @@ void print_byte_array(char* array, size_t size, char* line_prefix) {
     }
     printf("\n");
 }
+
+char get_bit(char* raw_content, int reset) {
+    static size_t n_bit = 0;
+    if (reset) {
+        n_bit = 0;
+        return 0;
+    }
+    return (raw_content[n_bit / 8] >> (n_bit++ % 8)) & 1;
+}
+
+void reset_get_bit() {
+    get_bit("", 1);
+}
+
+int16_t get_bits(char* raw_content, int count) {
+    int16_t res = 0;
+    for (int i = 0; i < count; i++) {
+        res |= get_bit(raw_content, 0) << i;
+    }
+    return res;
+}
+
+

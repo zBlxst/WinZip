@@ -6,6 +6,7 @@
 #include <stdlib.h>
 
 #include "utils.h"
+#include "deflate.h"
 
 void print_local_file_header(local_file_header* head) {
     printf("File\n");
@@ -236,4 +237,10 @@ void extract_zip(char *file_content, off_t size) {
     parse_file_entries(file_content, size, zip);
 
     // print_byte_array(zip->file_entry_list->entry->raw_content, zip->file_entry_list->entry->head->compressed_size, "");
+    char* output = malloc_or_error(zip->file_entry_list->entry->head->decompressed_size);
+    deflate(zip->file_entry_list->entry->raw_content, output, zip->file_entry_list->entry->head->decompressed_size);
+
+    for (int i = 0; i < zip->file_entry_list->entry->head->decompressed_size; i++) {
+        printf("%c", output[i]);
+    }
 }
