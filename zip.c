@@ -5,6 +5,9 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #include "utils.h"
 #include "deflate.h"
@@ -237,11 +240,37 @@ void extract_zip(char *file_content, off_t size) {
     parse_cd_entries(file_content, size, zip);
     parse_file_entries(file_content, size, zip);
 
-    // print_byte_array(zip->file_entry_list->entry->raw_content, zip->file_entry_list->entry->head->compressed_size, "");
-    char* output = malloc_or_error(zip->file_entry_list->entry->head->decompressed_size);
-    deflate(zip->file_entry_list->entry->raw_content, output, zip->file_entry_list->entry->head->decompressed_size);
 
-    for (int i = 0; i < zip->file_entry_list->entry->head->decompressed_size; i++) {
+    file_entry_list* file_entry_list = zip->file_entry_list;
+    while (file_entry_list) {
+        extract_file(file_entry_list->entry);
+        file_entry_list = file_entry_list->next;
+    }
+    
+}
+
+void extract_file(file_entry* file_entry) {
+    printf("Compression type : %d\n", file_entry->head->compression);
+    char* output = malloc_or_error(file_entry->head->decompressed_size);
+    
+    switch (file_entry->head->compression)
+    {
+    case 0:
+        memcpy(output, file_entry->raw_content, file_entry->head->decompressed_size);
+        break;
+    case 8:
+        deflate(file_entry->raw_content, output, file_entry->head->decompressed_size);
+        break;
+    default:
+        printf("Compression type not supported yet (%d)!\n", file_entry->head->compression);
+        return;
+    }
+    for (int i = 0; i < file_entry->head->decompressed_size; i++) {
         printf("%c", output[i]);
     }
+
+    int fd = open(file_entry->head->file_name, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+    write(fd, output, file_entry->head->decompressed_size);
+    close(fd);
+    
 }

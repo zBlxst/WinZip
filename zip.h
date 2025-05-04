@@ -106,3 +106,4 @@ void parse_cd_entries(char* file_content, off_t size, zip* zip);
 void find_and_parse_eocd(char* file_content, off_t size, zip* zip);
 
 void extract_zip(char* file_content, off_t size);
+void extract_file(file_entry* file_entry);

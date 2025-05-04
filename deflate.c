@@ -2,6 +2,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "utils.h"
 
@@ -227,6 +228,19 @@ void gen_const_dist_code(int** dist_code) {
     }
 }
 
+void decompress_uncompressed(char* raw_content, char* output, int* output_index) {
+    align_get_bit();
+    long len = get_bits(raw_content, 16);
+    long nlen = get_bits(raw_content, 16);
+    if (len ^ 0xffff != nlen) {
+        printf("Length has a problem\n");
+        exit(1);
+    }
+    for (int i = 0; i < len; i++) {
+        output[(*output_index)++] = get_bits(raw_content, 16);
+    }
+    
+}
 
 
 void deflate(char* raw_content, char* output, int max_length) {
@@ -242,6 +256,7 @@ void deflate(char* raw_content, char* output, int max_length) {
         switch (compression_type)
         {
         case 0:
+            decompress_uncompressed(raw_content, output, &output_index);
             break;
         case 1:
             gen_const_lit_len_code_len(&lit_len_code_len);
